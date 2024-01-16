@@ -18,6 +18,7 @@ import (
 
 const F_Name = "custom-plugin"
 
+// 该结构体用于存储插件的配置信息，算法所需的参数
 type Args_ATH struct {
 	// 限制Node可运行的实例数量，初始化为3，增大，步幅为1
 	alpha int

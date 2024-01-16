@@ -9,7 +9,6 @@ import (
 	"k8s.io/klog"
 	framework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 	"k8s.io/kubernetes/pkg/scheduler/nodeinfo"
-	"strings"
 )
 
 // 插件名称
@@ -17,6 +16,9 @@ const Name = "custom-plugin"
 
 // 表征pod的下标
 var t int64 = 0
+
+// 表征当前最高分数的节点
+var nodename string = ""
 
 type Args struct {
 	FavoriteColor  string `json:"favorite_color,omitempty"`
@@ -47,7 +49,9 @@ func (s *Sample) NormalizeScore(ctx context.Context, state *framework.CycleState
 		scores[i].Score = scores[i].Score * framework.MaxNodeScore / maxScore
 		fmt.Printf("the %v of scores is %v\n", i, scores[i].Score)
 	}
-	return framework.NewStatus(framework.Success)
+	nodeName := s.GetMaxScoreNode(scores)
+	nodename = nodeName
+	return framework.NewStatus(framework.Success, fmt.Sprintf("节点 %s 符合标准，并且分数最高！！", nodeName))
 }
 
 func (s *Sample) Score_Extended() (int64, *framework.Status) {
@@ -133,14 +137,6 @@ func (sr Sample) PreBind(ctx context.Context, state *framework.CycleState, pod *
 	if pod == nil {
 		return framework.NewStatus(framework.Error, fmt.Sprintf("pod cannot be nil"))
 	}
-	if !strings.Contains(pod.Name, "747f894ffb") {
-		return framework.NewStatus(framework.Error, fmt.Sprintf("pod name need contain 747f894ffb"))
-		//binding := &v1.Binding{
-		//	ObjectMeta: v12.ObjectMeta{Namespace: pod.Namespace, Name: pod.Name, UID: pod.UID},
-		//	Target:     v1.ObjectReference{Kind: "Node", Name: "master1"},
-		//}
-		//sr.handle.ClientSet().CoreV1().Pods(pod.Namespace).Bind(ctx,binding,v12.CreateOptions{})
-	}
 	return nil
 }
 
@@ -155,11 +151,11 @@ func (sr Sample) GetMaxScoreNode(scores framework.NodeScoreList) string {
 		}
 	}
 	if node_index == 0 {
-		nodeName = "k8s-master"
+		nodeName = "master"
 	} else if node_index == 1 {
-		nodeName = "k8s-worker1"
+		nodeName = "worker1"
 	} else if node_index == 2 {
-		nodeName = "k8s-worker2"
+		nodeName = "worker2"
 	}
 	return nodeName
 }
@@ -172,8 +168,8 @@ func (sr Sample) Bind(ctx context.Context, state *framework.CycleState, pod *v1.
 	if pod == nil {
 		return framework.NewStatus(framework.Error, fmt.Sprintf("pod cannot be nil"))
 	}
-	// 包含c9521cd4的pod调度到master1节点
-	if strings.Contains(pod.Name, "747f894ffb") {
+	// pod调度到得分最高的节点上
+	if nodeName == nodename {
 		binding := &v1.Binding{
 			ObjectMeta: v12.ObjectMeta{Namespace: pod.Namespace, Name: pod.Name, UID: pod.UID},
 			Target:     v1.ObjectReference{Kind: "Node", Name: nodeName},
