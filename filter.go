@@ -3,17 +3,22 @@ package plugins
 import (
 	"context"
 	"fmt"
+	"math"
+	"math/rand"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/scheduler/nodeinfo"
-	"math"
-	"math/rand"
+
 	//"k8s.io/apimachinery/pkg/api/resource"
 	//metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	framework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
+
 	//"math/rand"
 	//"time"
+	//加入随机森林的依赖
+	"github.com/yugecode/custom-scheduler/pkg/forest"
 )
 
 const F_Name = "custom-plugin"
@@ -160,6 +165,23 @@ func (sr Sample) PreFilter(ctx context.Context, state *framework.CycleState, pod
 	fmt.Printf("pod:%s,namespace:%s\n", pod.Name, pod.Namespace)
 	a.init()
 	fmt.Println("-----------------------------------------")
+	// 调用 predictResources
+	if err := sr.predictResources(state, pod); err != nil {
+		// 如果有错误发生，应返回状态并记录错误
+		klog.Errorf("Error predicting resources for pod %s: %v", pod.Name, err)
+		return framework.NewStatus(framework.Error, err.Error())
+	}
+	predictedResources, err := getPredictedResources(state)
+	if err != nil {
+		fmt.Println(err)
+	} else {
+		// 打印预测资源
+		fmt.Printf("Prefilter中的 Predicted resources - GPU Cores: %d, GPU Memory: %d, Bandwidth: %d\n",
+			predictedResources.gpuCores,
+			predictedResources.gpumem,
+			predictedResources.bandwidth,
+		)
+	}
 	return framework.NewStatus(framework.Success) // Pod 可以在此节点上调度
 }
 
@@ -220,8 +242,43 @@ func New_M(configuration *runtime.Unknown, f framework.FrameworkHandle) (framewo
 		return nil, err
 	}
 	klog.V(3).Infof("get plugin config args: %+v", args)
+	// 创建随机森林模型
+	reg1 := forest.NewRegressor(
+		forest.NumTrees(10),
+		forest.MaxFeatures(3),
+		forest.MinSplit(2),
+		forest.MinLeaf(1),
+		forest.MaxDepth(10),
+		forest.NumWorkers(1),
+	)
+	// 创建随机森林模型
+	reg2 := forest.NewRegressor(
+		forest.NumTrees(10),
+		forest.MaxFeatures(3),
+		forest.MinSplit(2),
+		forest.MinLeaf(1),
+		forest.MaxDepth(10),
+		forest.NumWorkers(1),
+	)
+	// 创建随机森林模型
+	reg3 := forest.NewRegressor(
+		forest.NumTrees(10),
+		forest.MaxFeatures(3),
+		forest.MinSplit(2),
+		forest.MinLeaf(1),
+		forest.MaxDepth(10),
+		forest.NumWorkers(1),
+	)
+	// 使用训练数据进行训练
+	reg1.Fit(featureData, Num_GPU)
+	reg2.Fit(featureData, GMem)
+	reg3.Fit(featureData, Bandwidth)
+
 	return &Sample{
 		args:   args,
 		handle: f,
+		model1: reg1,
+		model2: reg2,
+		model3: reg3,
 	}, nil
 }
