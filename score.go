@@ -3,12 +3,16 @@ package plugins
 import (
 	"context"
 	"fmt"
+	"math"
+	"math/rand"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog"
 	framework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
-	"math"
-	"math/rand"
+
+	//加入随机森林的依赖
+	"github.com/yugecode/custom-scheduler/pkg/forest"
 )
 
 var t_a int
@@ -128,13 +132,16 @@ step_3:
 	if a.m_star == 0 {
 		// 100表示直接就能够找到合适的服务器节点
 		fmt.Println("得出结果........k8s-master")
-		return 100, framework.NewStatus(framework.Success, fmt.Sprintf("节点 %s 成功符合标准", "k8s-master"))
+		score := sr.getScore(state, "master")
+		return score, framework.NewStatus(framework.Success, fmt.Sprintf("节点 %s 成功符合标准", "k8s-master"))
 	} else if a.m_star == 1 {
 		fmt.Println("得出结果........k8s-worker1")
-		return 100, framework.NewStatus(framework.Success, fmt.Sprintf("节点 %s 成功符合标准", "k8s-worker1"))
+		score := sr.getScore(state, "worker1")
+		return score, framework.NewStatus(framework.Success, fmt.Sprintf("节点 %s 成功符合标准", "k8s-worker1"))
 	} else if a.m_star == 2 {
 		fmt.Println("得出结果........k8s-worker2")
-		return 100, framework.NewStatus(framework.Success, fmt.Sprintf("节点 %s 成功符合标准", "k8s-worker2"))
+		score := sr.getScore(state, "worker2")
+		return score, framework.NewStatus(framework.Success, fmt.Sprintf("节点 %s 成功符合标准", "k8s-worker2"))
 	}
 	fmt.Println("得出结果........None")
 	return 1, framework.NewStatus(framework.Unschedulable, fmt.Sprintf("目前没有找到合适的节点"))
@@ -154,8 +161,43 @@ func New_S(configuration *runtime.Unknown, f framework.FrameworkHandle) (framewo
 		return nil, err
 	}
 	klog.V(3).Infof("get plugin config args: %+v", args)
+	// 创建随机森林模型
+	reg1 := forest.NewRegressor(
+		forest.NumTrees(10),
+		forest.MaxFeatures(3),
+		forest.MinSplit(2),
+		forest.MinLeaf(1),
+		forest.MaxDepth(10),
+		forest.NumWorkers(1),
+	)
+	// 创建随机森林模型
+	reg2 := forest.NewRegressor(
+		forest.NumTrees(10),
+		forest.MaxFeatures(3),
+		forest.MinSplit(2),
+		forest.MinLeaf(1),
+		forest.MaxDepth(10),
+		forest.NumWorkers(1),
+	)
+	// 创建随机森林模型
+	reg3 := forest.NewRegressor(
+		forest.NumTrees(10),
+		forest.MaxFeatures(3),
+		forest.MinSplit(2),
+		forest.MinLeaf(1),
+		forest.MaxDepth(10),
+		forest.NumWorkers(1),
+	)
+	// 使用训练数据进行训练
+	reg1.Fit(featureData, Num_GPU)
+	reg2.Fit(featureData, GMem)
+	reg3.Fit(featureData, Bandwidth)
+
 	return &Sample{
 		args:   args,
 		handle: f,
+		model1: reg1,
+		model2: reg2,
+		model3: reg3,
 	}, nil
 }

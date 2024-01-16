@@ -3,16 +3,21 @@ package plugins
 import (
 	"context"
 	"fmt"
+
 	v1 "k8s.io/api/core/v1"
 	v12 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog"
 	framework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 	"k8s.io/kubernetes/pkg/scheduler/nodeinfo"
+
+	//加入随机森林的依赖
+	"github.com/yugecode/custom-scheduler/pkg/forest"
 )
 
 // 插件名称
 const Name = "custom-plugin"
+const PredictedResourcesKey = "PredictedResources"
 
 // 表征pod的下标
 var t int64 = 0
@@ -29,6 +34,9 @@ type Args struct {
 type Sample struct {
 	args   *Args
 	handle framework.FrameworkHandle
+	model1 *forest.Regressor
+	model2 *forest.Regressor
+	model3 *forest.Regressor
 }
 
 func (s *Sample) NormalizeScore(ctx context.Context, state *framework.CycleState, pod *v1.Pod, scores framework.NodeScoreList) *framework.Status {
@@ -191,8 +199,43 @@ func New(configuration *runtime.Unknown, f framework.FrameworkHandle) (framework
 		return nil, err
 	}
 	klog.V(3).Infof("get plugin config args: %+v", args)
+	// 创建随机森林模型
+	reg1 := forest.NewRegressor(
+		forest.NumTrees(10),
+		forest.MaxFeatures(3),
+		forest.MinSplit(2),
+		forest.MinLeaf(1),
+		forest.MaxDepth(10),
+		forest.NumWorkers(1),
+	)
+	// 创建随机森林模型
+	reg2 := forest.NewRegressor(
+		forest.NumTrees(10),
+		forest.MaxFeatures(3),
+		forest.MinSplit(2),
+		forest.MinLeaf(1),
+		forest.MaxDepth(10),
+		forest.NumWorkers(1),
+	)
+	// 创建随机森林模型
+	reg3 := forest.NewRegressor(
+		forest.NumTrees(10),
+		forest.MaxFeatures(3),
+		forest.MinSplit(2),
+		forest.MinLeaf(1),
+		forest.MaxDepth(10),
+		forest.NumWorkers(1),
+	)
+	// 使用训练数据进行训练
+	reg1.Fit(featureData, Num_GPU)
+	reg2.Fit(featureData, GMem)
+	reg3.Fit(featureData, Bandwidth)
+
 	return &Sample{
 		args:   args,
 		handle: f,
+		model1: reg1,
+		model2: reg2,
+		model3: reg3,
 	}, nil
 }
